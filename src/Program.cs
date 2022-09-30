@@ -17,7 +17,9 @@
  * along with qBittorrent.Backup.  If not, see <http://www.gnu.org/licenses/>.
  */
 
+using System;
 using System.IO;
+using Mono.Options;
 using static System.Console;
 using static System.Environment;
 
@@ -25,9 +27,45 @@ namespace qBittorrent.Backup
 {
   internal static class Program
   {
+    public static string Archive = string.Empty;
+    public static string Restore = string.Empty;
+
+    public static readonly CommandSet CommandSet = new("qbt-backup")
+    {
+      new Command("backup", "archive the current data to a new archive")
+      {
+        Options = new OptionSet
+        {
+          {
+            "a|archive=", "optional full path where the archive should be created, e.g. ~/qbt-backup.zip",
+            s => { Archive = new FileInfo(s).FullName; }
+          }
+        },
+        Run = _ => { ArchiveData(); }
+      },
+      new Command("restore", "archive data from an existing archive")
+      {
+        Options = new OptionSet
+        {
+          {
+            "a|archive=", "full path to the archive with backed up data, e.g. ~/qbt-backup.zip",
+            s => { Restore = new FileInfo(s).FullName; }
+          }
+        },
+        Run = _ => { RestoreData(); }
+      }
+    };
+
     public static void Main(string[] args)
     {
-      var archive = Archive.Generate();
+      CommandSet.Run(args);
+    }
+
+    private static void ArchiveData()
+    {
+      var archive = string.IsNullOrWhiteSpace(Archive)
+        ? Backup.Archive.Generate()
+        : new Archive(new FileInfo(Archive));
 
       Message($"Backup: {archive.File.FullName}");
 
@@ -41,7 +79,31 @@ namespace qBittorrent.Backup
           foreach (var entry in entries)
             WriteLine(entry.Name);
         }
-        catch (DirectoryNotFoundException e)
+        catch (Exception e)
+        {
+          Message(e.Message);
+        }
+    }
+
+    private static void RestoreData()
+    {
+      var archive = string.IsNullOrWhiteSpace(Restore)
+        ? Backup.Archive.Retrieve()
+        : new Archive(new FileInfo(Restore));
+
+      Message($"Restore: {archive.File.FullName}");
+
+      foreach (var source in Source.All())
+        try
+        {
+          var restored = archive.Restore(source);
+
+          Message($"Restored up the following '{source.Type}' files:", '-');
+
+          foreach (var entry in restored)
+            WriteLine(entry.Name);
+        }
+        catch (Exception e)
         {
           Message(e.Message);
         }

@@ -20,6 +20,7 @@
 using System.Collections.Generic;
 using System.IO;
 using System.IO.Compression;
+using System.Linq;
 using static System.IO.Path;
 using static System.IO.SearchOption;
 using static System.IO.Compression.ZipArchiveMode;
@@ -59,17 +60,42 @@ namespace qBittorrent.Backup
       if (!source.Directory.Exists)
         throw new DirectoryNotFoundException("Source directory does not exist!");
 
-      var entries = new List<FileInfo>();
+      var              entries = new List<FileInfo>();
+      using ZipArchive archive = ZipFile.Open(File.FullName, Update);
 
-      using ZipArchive zip = ZipFile.Open(File.FullName, Update);
       foreach (var file in source.Directory.GetFiles("*", AllDirectories))
       {
         var path = GetRelativePath(source.Directory.FullName, file.FullName);
-        zip.CreateEntryFromFile(file.FullName, Combine(source.Type.ToString().ToLower(), path));
+        archive.CreateEntryFromFile(file.FullName, Combine(source.Type.ToString().ToLower(), path));
         entries.Add(file);
       }
 
       return entries;
+    }
+
+    public List<FileInfo> Restore(Source source, bool overwrite = false)
+    {
+      var              extracted = new List<FileInfo>();
+      using ZipArchive archive   = ZipFile.OpenRead(File.FullName);
+
+      foreach (ZipArchiveEntry entry in archive.Entries)
+        if (entry.FullName.StartsWith(source.Type.ToString().ToLower()))
+        {
+          var index = source.Type.ToString().Length + 1;
+          var destination = new FileInfo(Combine(
+            source.Directory.FullName,                                     /* qbt source directory on host */
+            entry.FullName.Substring(index, entry.FullName.Length - index) /* archive path w/o source prefix */
+          ));
+
+          if (destination.Exists && !overwrite)
+            continue;
+
+          destination.Directory?.Create();
+          entry.ExtractToFile(destination.FullName);
+          extracted.Add(destination);
+        }
+
+      return extracted;
     }
   }
 }
