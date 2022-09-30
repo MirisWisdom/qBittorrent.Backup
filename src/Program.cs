@@ -25,11 +25,8 @@ using static System.Environment;
 
 namespace qBittorrent.Backup
 {
-  internal static class Program
+  public static class Program
   {
-    public static string Archive = string.Empty;
-    public static string Restore = string.Empty;
-
     public static readonly CommandSet CommandSet = new("qbt-backup")
     {
       new Command("backup", "archive the current data to a new archive")
@@ -50,31 +47,53 @@ namespace qBittorrent.Backup
           {
             "a|archive=", "full path to the archive with backed up data, e.g. ~/qbt-backup.zip",
             s => { Restore = new FileInfo(s).FullName; }
+          },
+          {
+            "overwrite", "overwrite existing files (this will create a backup first!)",
+            s => Overwrite = !string.IsNullOrWhiteSpace(s)
           }
         },
         Run = _ => { RestoreData(); }
       }
     };
 
+    public static string Archive   { get; set; } = string.Empty; /* custom path to the archive .zip  */
+    public static string Restore   { get; set; } = string.Empty; /* custom path to the restore .zip  */
+    public static bool   Overwrite { get; set; }                 /* overwrite during restore process */
+
     public static void Main(string[] args)
     {
+      if (args.Length == 0)
+      {
+        ArchiveData();
+        Message("Successfully archived the data! Press any key to continue...", '~');
+        ReadLine();
+        Exit(0);
+      }
+
       CommandSet.Run(args);
     }
 
+    /**
+     * Front-end for the data archive procedure.
+     */
     private static void ArchiveData()
     {
       var archive = string.IsNullOrWhiteSpace(Archive)
         ? Backup.Archive.Generate()
         : new Archive(new FileInfo(Archive));
 
-      Message($"Backup: {archive.File.FullName}");
+      Message($"Backup file: {archive.File.FullName}");
 
       foreach (var source in Source.All())
         try
         {
           var entries = archive.Compress(source);
 
-          Message($"Backed up the following '{source.Type}' files:", '-');
+          if (entries.Count <= 0)
+            continue;
+
+          Message($"Archived the following '{source.Type}' files:", '-');
 
           foreach (var entry in entries)
             WriteLine(entry.Name);
@@ -85,20 +104,29 @@ namespace qBittorrent.Backup
         }
     }
 
+    /**
+     * Front-end for the data restore procedure.
+     */
     private static void RestoreData()
     {
+      if (Overwrite)
+        ArchiveData(); /* prevent regrettable decisions */
+
       var archive = string.IsNullOrWhiteSpace(Restore)
         ? Backup.Archive.Retrieve()
         : new Archive(new FileInfo(Restore));
 
-      Message($"Restore: {archive.File.FullName}");
+      Message($"Restore file: {archive.File.FullName}");
 
       foreach (var source in Source.All())
         try
         {
-          var restored = archive.Restore(source);
+          var restored = archive.Restore(source, Overwrite);
 
-          Message($"Restored up the following '{source.Type}' files:", '-');
+          if (restored.Count <= 0)
+            continue;
+
+          Message($"Restored the following '{source.Type}' files:", '-');
 
           foreach (var entry in restored)
             WriteLine(entry.Name);

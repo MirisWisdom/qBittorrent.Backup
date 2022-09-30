@@ -87,8 +87,11 @@ namespace qBittorrent.Backup
             entry.FullName.Substring(index, entry.FullName.Length - index) /* archive path w/o source prefix */
           ));
 
-          if (destination.Exists && !overwrite)
-            continue;
+          if (destination.Exists)
+            if (overwrite)
+              destination.Delete();
+            else
+              continue;
 
           destination.Directory?.Create();
           entry.ExtractToFile(destination.FullName);
